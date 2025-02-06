@@ -1,0 +1,155 @@
+---
+- name: Pre-baking for linux firewall config with ansible
+  hosts: "{{ host }}"
+  tasks:
+
+  - name: Update apt packages on Debian-based systems
+    ansible.builtin.apt:
+      update_cache: yes
+    become: yes
+    when: 
+      - ansible_pkg_mgr == "apt"
+
+  - name: Update yum packages on Red Hat-based systems
+    ansible.builtin.yum:
+      update_cache: yes
+    become: yes
+    when: 
+      - ansible_pkg_mgr == "yum"
+
+  - name: Update dnf packages on Red Hat-based systems
+    ansible.builtin.dnf:
+      update_cache: yes
+    become: yes
+    when: 
+      - ansible_pkg_mgr == "dnf"
+    
+  - name: Install firewalld
+    ansible.builtin.package:
+      name: firewalld
+      state: present
+    become: yes
+
+  - name: Start and enable firewalld
+    ansible.builtin.systemd:
+      name: firewalld
+      state: started
+      enabled: yes
+    become: yes
+    
+  - name: Stop and disable iptables
+    ansible.builtin.systemd:
+      name: iptables
+      state: stopped
+      enabled: no
+    become: yes
+    ignore_errors: yes
+
+  - name: Stop UFW
+    command: ufw disable
+    ignore_errors: yes
+    become: yes
+
+  - name: Disable UFW on startup
+    ansible.builtin.lineinfile:
+      path: /etc/ufw/ufw.conf
+      regexp: '^ENABLED='
+      line: 'ENABLED=no'
+    ignore_errors: yes
+    become: yes
+
+  - name: Get active public network interface
+    ansible.builtin.shell:
+      cmd: "ip route get 1 | awk '{print $5;exit}'"
+    register: active_interface
+    become: yes
+
+  - name: Change the default zone to external in firewalld
+    ansible.builtin.shell: 
+      cmd: firewall-cmd --set-default-zone=external
+    become: yes
+    
+  - name: Add active interface to external zone in firewalld
+    ansible.posix.firewalld:
+      zone: external
+      interface: "{{ active_interface.stdout }}"
+      state: enabled
+      permanent: yes
+      immediate: yes
+    become: yes
+
+  - name: Ensure firewalld is installed and running
+    ansible.builtin.service:
+      name: firewalld
+      state: started
+      enabled: yes
+    become: yes
+
+  - name: Ensure SSH service is enabled on external zone
+    ansible.posix.firewalld:
+      service: ssh
+      zone: external
+      permanent: yes
+      state: enabled
+    become: yes
+
+  - name: Set the list of ports from the environment variable
+    set_fact:
+      extra_ports: "{{ lookup('env', 'extra_ports').split(',') if lookup('env', 'extra_ports') else [] }}"
+
+  - name: Open additional ports
+    ansible.posix.firewalld:
+      port: "{{ item }}"
+      permanent: yes
+      state: enabled
+    become: yes
+    loop: "{{ extra_ports }}"
+    when: extra_ports | length > 0
+
+  - name: Set the list of services from the environment variable
+    set_fact:
+      extra_services: "{{ lookup('env', 'extra_services').split(',') if lookup('env', 'extra_services') else [] }}"
+
+  - name: Open additional services
+    ansible.posix.firewalld:
+      service: "{{ item }}"
+      permanent: yes
+      state: enabled
+    become: yes
+    loop: "{{ extra_services }}"
+    when: extra_services | length > 0
+
+  - name: Set default policy for external zone to drop
+    ansible.posix.firewalld:
+      zone: external
+      state: enabled
+      target: DROP
+      permanent: true
+    become: yes
+
+  - name: Reload firewalld
+    ansible.builtin.service:
+      name: firewalld
+      state: reloaded
+    become: yes
+
+  - name: Get active rules
+    ansible.builtin.shell:
+      cmd: firewall-cmd --zone=external --list-all
+    register: active_rules
+    become: yes
+
+  - name: Get active zone
+    ansible.builtin.shell:
+      cmd: firewall-cmd --get-active-zone
+    register: active_zone
+    become: yes
+
+  - name: Debug active rules, active zone, and default policy
+    ansible.builtin.debug:
+      msg:
+        - "{{ active_rules.stdout }}"
+        - "{{ active_zone.stdout }}"
+
+
+

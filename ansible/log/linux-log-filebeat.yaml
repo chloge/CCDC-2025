@@ -1,0 +1,104 @@
+---
+- name: Install and configure Filebeat
+  hosts: "{{ host }}"
+  become: yes
+  tasks:
+    - name: Add Elasticsearch GPG key on Red Hat-based systems
+      rpm_key:
+        state: present
+        key: https://artifacts.elastic.co/GPG-KEY-elasticsearch
+      when: ansible_os_family == 'RedHat'
+
+    - name: Add Elasticsearch repository on Red Hat-based systems
+      yum_repository:
+        name: elastic-8.x
+        description: "Elastic repository for 8.x packages"
+        baseurl: https://artifacts.elastic.co/packages/8.x/yum
+        gpgcheck: yes
+        gpgkey: https://artifacts.elastic.co/GPG-KEY-elasticsearch
+        enabled: yes
+      when: ansible_os_family == 'RedHat'
+
+    - name: Add Elasticsearch GPG key on Debian-based systems
+      apt_key:
+        url: https://artifacts.elastic.co/GPG-KEY-elasticsearch
+        state: present
+      when: ansible_os_family == 'Debian'
+
+    - name: Add Elasticsearch repository on Debian-based systems
+      apt_repository:
+        repo: "deb https://artifacts.elastic.co/packages/8.x/apt stable main"
+        state: present
+      when: ansible_os_family == 'Debian'
+
+    - name: Ensure Filebeat is installed on Red Hat-based systems
+      yum:
+        name: filebeat
+        state: present
+      when: ansible_os_family == 'RedHat'
+
+    - name: Ensure Filebeat is installed on Debian-based systems
+      apt:
+        name: filebeat
+        state: present
+        update_cache: yes
+      when: ansible_os_family == 'Debian'
+
+    - name: Ensure Filebeat is enabled and started
+      service:
+        name: filebeat
+        state: started
+        enabled: yes
+
+    - name: Enable the system module
+      command: filebeat modules enable system
+      notify: Restart Filebeat
+
+    - name: Configure system module
+      copy:
+        content: |
+          - module: system
+            syslog:
+              enabled: true
+            auth:
+              enabled: true
+        dest: /etc/filebeat/modules.d/system.yml
+        mode: '0644'
+      notify: Restart Filebeat
+
+    - name: Configure Filebeat
+      copy:
+        content: |
+          filebeat.config.modules:
+            path: /etc/filebeat/modules.d/*.yml
+            reload.enabled: true
+
+          output.logstash:
+            hosts: ["{{ logstash_server }}:5044"]
+
+          logging.level: info
+        dest: /etc/filebeat/filebeat.yml
+        mode: '0644'
+      notify: Restart Filebeat
+
+  handlers:
+    - name: Restart Filebeat
+      service:
+        name: filebeat
+        state: restarted
+
+- name: Gather Filebeat status
+  hosts: "{{ host }}"
+  become: yes
+  tasks:
+    - name: Wait for 10 seconds, this is done to give Filebeat time to come online
+      pause:
+        seconds: 10
+
+    - name: Get Filebeat status
+      command: systemctl status filebeat
+      register: filebeat_status
+
+    - name: Ship Filebeat status
+      debug:
+        var: filebeat_status.stdout

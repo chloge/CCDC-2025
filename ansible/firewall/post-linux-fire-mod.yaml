@@ -1,0 +1,78 @@
+---
+- name: Modify firewall services and rules with ansible
+  hosts: "{{ host }}"
+  tasks:
+  - name: Ensure firewalld is installed and running
+    ansible.builtin.service:
+      name: firewalld
+      state: started
+      enabled: yes
+    become: yes
+
+  - name: Set the list of ports from the environment variable
+    set_fact:
+      extra_ports: "{{ lookup('env', 'extra_ports').split(',') if lookup('env', 'extra_ports') else [] }}"
+
+  - name: Set the list of services from the environment variable
+    set_fact:
+      extra_services: "{{ lookup('env', 'extra_services').split(',') if lookup('env', 'extra_services') else [] }}"
+
+  - name: Set the mode (add or remove) if provided
+    set_fact:
+      mode: "{{ lookup('env', 'mode') if lookup('env', 'mode') else '' }}"
+
+  - name: Fail if mode is not provided
+    fail:
+      msg: "The 'mode' variable must be set to 'add' or 'remove'. Please provide it and rerun the playbook."
+    when: mode == ""
+
+  - name: Fail if mode is invalid
+    fail:
+      msg: "The 'mode' variable must be either 'add' or 'remove'. Invalid value: {{ mode }}"
+    when: mode not in ["add", "remove"]
+
+  - name: Translate mode to firewalld state 
+    set_fact: 
+      firewalld_state: "{{ 'enabled' if mode == 'add' else 'disabled' }}"
+
+  - name: Modify ports
+    ansible.posix.firewalld:
+      port: "{{ item }}"
+      permanent: yes
+      state: "{{ firewalld_state }}"
+    become: yes
+    loop: "{{ extra_ports }}"
+    when: extra_ports | length > 0
+
+  - name: Modify services
+    ansible.posix.firewalld:
+      service: "{{ item }}"
+      permanent: yes
+      state: "{{ firewalld_state }}"
+    become: yes
+    loop: "{{ extra_services }}"
+    when: extra_services | length > 0
+
+  - name: Reload firewalld
+    ansible.builtin.service:
+      name: firewalld
+      state: reloaded
+    become: yes
+
+  - name: Get active rules
+    ansible.builtin.shell:
+      cmd: firewall-cmd --zone=external --list-all
+    register: active_rules
+    become: yes
+
+  - name: Get active zone
+    ansible.builtin.shell:
+      cmd: firewall-cmd --get-active-zone
+    register: active_zone
+    become: yes
+
+  - name: Debug active rules, active zone, and default policy
+    ansible.builtin.debug:
+      msg:
+        - "{{ active_rules.stdout }}"
+        - "{{ active_zone.stdout }}"

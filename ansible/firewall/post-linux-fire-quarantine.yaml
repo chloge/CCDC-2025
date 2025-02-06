@@ -1,0 +1,80 @@
+---
+- name: Setup/reverse quarantine
+  hosts: "{{ host }}"
+  become: yes
+  tasks:
+    - name: Fail if essential list is empty
+      fail:
+        msg: "List of essential IP addresses is empty, failing..."
+      when: essential | length == 0
+
+    - name: Allow outbound traffic to essential IPs in the external zone
+      ansible.posix.firewalld:
+        rich_rule: "rule priority=-10000 family='ipv4' source address='{{ item }}' accept"
+        zone: external
+        permanent: yes
+        state: enabled
+      loop: "{{ essential }}"
+
+    - name: Allow inbound traffic from essential IPs in the external zone
+      ansible.posix.firewalld:
+        rich_rule: "rule priority=-10000 family='ipv4' destination address='{{ item }}' accept"
+        zone: external
+        permanent: yes
+        state: enabled
+      loop: "{{ essential }}"
+      
+    - name: Set the mode (add or remove) if provided
+      set_fact:
+        mode: "{{ lookup('env', 'mode') if lookup('env', 'mode') else '' }}"
+  
+    - name: Fail if mode is not provided
+      fail:
+        msg: "The 'mode' variable toggles the quarantine, and must be set to 'on' or 'off'. Please provide it and rerun the playbook."
+      when: mode == ""
+  
+    - name: Fail if mode is invalid
+      fail:
+        msg: "The 'mode' variable toggles the quarantine, and must be either 'on' or 'off'. Invalid value: {{ mode }}"
+      when: mode not in ["on", "off"]
+  
+    - name: Translate mode to firewalld state 
+      set_fact: 
+        firewalld_state: "{{ 'enabled' if mode == 'on' else 'disabled' }}"
+        
+    - name: Fail if no subnets are provided
+      fail:
+        msg: "The lan subnets list cannot be empty."
+      when: lan_groups | length == 0
+
+    - name: Block outbound traffic to specified subnets
+      firewalld:
+        rich_rule: 'rule priority=10000 family="ipv4" destination address="{{ item }}" reject'
+        permanent: yes
+        state: "{{ firewalld_state }}"
+        immediate: yes
+      loop: "{{ lan_groups }}"
+
+    - name: Reload firewalld
+      ansible.builtin.service:
+        name: firewalld
+        state: reloaded
+      become: yes
+
+    - name: Get active rules
+      ansible.builtin.shell:
+        cmd: firewall-cmd --zone=external --list-all
+      register: active_rules
+      become: yes
+  
+    - name: Get active zone
+      ansible.builtin.shell:
+        cmd: firewall-cmd --get-active-zone
+      register: active_zone
+      become: yes
+  
+    - name: Debug active rules, active zone, and default policy
+      ansible.builtin.debug:
+        msg:
+          - "{{ active_rules.stdout }}"
+          - "{{ active_zone.stdout }}"

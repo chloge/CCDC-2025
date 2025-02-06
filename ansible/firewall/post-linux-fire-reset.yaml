@@ -1,0 +1,113 @@
+---
+- name: Reset firewalld configuration for external zone
+  hosts: "{{ host }}"
+  become: yes
+  tasks:
+    - name: Get all rich rules in external zone
+      command: firewall-cmd --zone=external --list-rich-rules
+      register: rich_rules
+
+    - name: Remove all rich rules in external zone
+      command: firewall-cmd --zone=external --permanent --remove-rich-rule="{{ item }}"
+      loop: "{{ rich_rules.stdout_lines }}"
+
+    - name: Reset all sources in external zone
+      command: firewall-cmd --zone=external --list-sources
+      register: sources
+
+    - name: Remove all sources in external zone
+      ansible.posix.firewalld:
+        zone: external
+        source: "{{ item }}"
+        state: disabled
+        permanent: yes
+      loop: "{{ sources.stdout_lines }}"
+
+    - name: Reset all services in external zone
+      command: firewall-cmd --zone=external --list-services
+      register: services
+
+    - name: Remove all services in external zone
+      ansible.posix.firewalld:
+        zone: external
+        service: "{{ item }}"
+        state: disabled
+        permanent: yes
+      loop: "{{ services.stdout_lines }}"
+
+    - name: Reset all ports in external zone
+      command: firewall-cmd --zone=external --list-ports
+      register: ports
+
+    - name: Remove all ports in external zone
+      ansible.posix.firewalld:
+        zone: external
+        port: "{{ item }}"
+        state: disabled
+        permanent: yes
+      loop: "{{ ports.stdout_lines }}"
+
+    - name: Reset all protocols in external zone
+      command: firewall-cmd --zone=external --list-protocols
+      register: protocols
+
+    - name: Remove all protocols in external zone
+      ansible.posix.firewalld:
+        zone: external
+        protocol: "{{ item }}"
+        state: disabled
+        permanent: yes
+      loop: "{{ protocols.stdout_lines }}"
+
+    - name: Reset all forward ports in external zone
+      command: firewall-cmd --zone=external --list-forward-ports
+      register: forward_ports
+
+    - name: Remove all forward ports in external zone
+      ansible.posix.firewalld:
+        zone: external
+        forward_port: "{{ item }}"
+        state: disabled
+        permanent: yes
+      loop: "{{ forward_ports.stdout_lines }}"
+
+    - name: Reset all ICMP blocks in external zone
+      command: firewall-cmd --zone=external --list-icmp-blocks
+      register: icmp_blocks
+
+    - name: Remove all ICMP blocks in external zone
+      ansible.posix.firewalld:
+        zone: external
+        icmp_block: "{{ item }}"
+        state: disabled
+        permanent: yes
+      loop: "{{ icmp_blocks.stdout_lines }}"
+
+    - name: Ensure SSH is enabled in external zone to prevent lockout 
+      ansible.posix.firewalld: 
+        zone: external 
+        service: ssh 
+        state: enabled 
+        permanent: yes 
+        immediate: yes
+   
+    - name: Reload firewalld
+      ansible.builtin.service:
+        name: firewalld
+        state: reloaded
+    
+    - name: Get active rules
+      ansible.builtin.shell:
+        cmd: firewall-cmd --zone=external --list-all
+      register: active_rules
+
+    - name: Get active zone
+      ansible.builtin.shell:
+        cmd: firewall-cmd --get-active-zone
+      register: active_zone
+  
+    - name: Debug active rules, active zone, and default policy
+      ansible.builtin.debug:
+        msg:
+          - "{{ active_rules.stdout }}"
+          - "{{ active_zone.stdout }}"
