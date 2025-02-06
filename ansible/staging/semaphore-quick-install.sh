@@ -16,7 +16,7 @@ sudo systemctl enable docker
 sudo systemctl start docker
 
 # Command to bring Semaphore container up
-sudo docker run --name semaphore -p 3000:3000 -e SEMAPHORE_DB_DIALECT=bolt -e SEMAPHORE_ADMIN=admin -e SEMAPHORE_ADMIN_PASSWORD=changeme -e SEMAPHORE_ADMIN_NAME="Admin" -e SEMAPHORE_ADMIN_EMAIL=admin@localhost --restart=always -d semaphoreui/semaphore:v2.10.35
+sudo docker run --name semaphore -p 127.0.0.1:3000:3000 -e SEMAPHORE_DB_DIALECT=bolt -e SEMAPHORE_ADMIN=admin -e SEMAPHORE_ADMIN_PASSWORD=changeme -e SEMAPHORE_ADMIN_NAME="Admin" -e SEMAPHORE_ADMIN_EMAIL=admin@localhost --restart=always -d semaphoreui/semaphore:v2.10.35
 
 # Open port 3000 if requested
 read -p "Would you like to open port 3000? Only allow this if you need the Semaphore web GUI accessable across the network (y/n): " open_port
