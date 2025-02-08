@@ -1,0 +1,59 @@
+# Set path for password log file
+$passwordLog = "C:\passwords.txt"
+
+# Clear previous log file (if it exists)
+if (Test-Path $passwordLog) {
+    Remove-Item $passwordLog -Force
+}
+
+# Change passwords for default accounts
+$users = @("Guest", "DefaultAccount")
+Write-Host "Changing passwords for default users (excluding Administrator)..."
+
+foreach ($user in $users) {
+    if (Get-LocalUser -Name $user -ErrorAction SilentlyContinue) {
+        # Generate a secure random password
+        $newPassword = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 16 | ForEach-Object {[char]$_})
+        $securePassword = ConvertTo-SecureString $newPassword -AsPlainText -Force
+        
+        # Apply new password
+        Set-LocalUser -Name $user -Password $securePassword
+        
+        # Log password to file
+        "$user : $newPassword" | Out-File -Append -FilePath $passwordLog
+        
+        Write-Host "Password changed for $user"
+    }
+}
+
+Write-Host "Passwords saved to $passwordLog"
+
+# Firewall Configuration
+Write-Host "Configuring firewall settings..."
+
+# Reset firewall to default
+netsh advfirewall reset
+
+# Define necessary firewall rules to keep enabled
+$allowedRules = @(
+    "Core Networking",
+    "File and Printer Sharing",
+    "Remote Desktop",
+    "Windows Remote Management (HTTP-In)"
+)
+
+# Disable all rules except the allowed ones
+$allRules = Get-NetFirewallRule
+foreach ($rule in $allRules) {
+    if ($allowedRules -contains $rule.DisplayName) {
+        Set-NetFirewallRule -Name $rule.Name -Enabled True
+    } else {
+        Set-NetFirewallRule -Name $rule.Name -Enabled False
+    }
+}
+
+Write-Host "Firewall rules configured to only allow essential services."
+
+# Force a reboot to apply changes
+Write-Host "Restarting system in 1 minute..."
+shutdown /r /t 60
