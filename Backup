@@ -1,0 +1,26 @@
+# Define backup path
+$backupPath = "C:\AD_Backup"
+$timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
+$backupFolder = "$backupPath\Backup_$timestamp"
+
+# Create backup directory
+if (!(Test-Path -Path $backupFolder)) {
+    New-Item -ItemType Directory -Path $backupFolder | Out-Null
+}
+
+Write-Host "Backing up AD and DC files..."
+
+# Backup NTDS Database (Active Directory)
+$ntdsPath = "C:\Windows\NTDS\ntds.dit"
+Copy-Item -Path $ntdsPath -Destination "$backupFolder\ntds.dit" -Force
+
+# Backup SYSVOL (Policies, Scripts, etc.)
+$sysvolPath = "C:\Windows\SYSVOL"
+Copy-Item -Path $sysvolPath -Destination "$backupFolder\SYSVOL" -Recurse -Force
+
+# Backup Registry Hives (SAM, SECURITY, SYSTEM)
+reg save HKLM\SAM "$backupFolder\SAM.hiv" /y
+reg save HKLM\SECURITY "$backupFolder\SECURITY.hiv" /y
+reg save HKLM\SYSTEM "$backupFolder\SYSTEM.hiv" /y
+
+Write-Host "Backup completed at $backupFolder"
