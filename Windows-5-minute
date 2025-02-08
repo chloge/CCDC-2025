@@ -1,0 +1,32 @@
+$ProgressPreference = 'SilentlyContinue'
+
+$enrollmentToken = Read-Host -Prompt "Enter enrollment token"
+
+Invoke-WebRequest -Uri "https://artifacts.elastic.co/downloads/beats/elastic-agent/elastic-agent-8.17.1-windows-x86_64.zip" -OutFile "elastic-agent-8.17.1-windows-x86_64.zip"
+Expand-Archive -Path "elastic-agent-8.17.1-windows-x86_64.zip" -DestinationPath .
+cd elastic-agent-8.17.1-windows-x86_64
+.\elastic-agent.exe install --url=https://107.173.248.17:8220 --enrollment-token=$enrollmentToken
+
+cd ..
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/chloge/CCDC-2025/main/MBSetup.exe" -OutFile "MBSetup.exe"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/chloge/CCDC-2025/main/SysinternalsSuite.zip" -OutFile "SysinternalsSuite.zip"
+
+Expand-Archive -Path "SysinternalsSuite.zip" -DestinationPath ".\SysinternalsSuite"
+
+$username = "manar"
+$password = Read-Host -Prompt "Enter password for $username" -AsSecureString
+$adminCreds = Get-Credential -Message "Enter domain admin credentials to create $username"
+
+Import-Module ActiveDirectory -ErrorAction Stop
+
+New-ADUser -Credential $adminCreds `
+    -Name $username `
+    -SamAccountName $username `
+    -AccountPassword $password `
+    -Enabled $true `
+    -PasswordNeverExpires $true `
+    -PassThru
+
+Add-ADGroupMember -Credential $adminCreds -Identity "Domain Admins" -Members $username
+
+Write-Host "Installation and setup completed successfully."
