@@ -1,0 +1,19 @@
+# Define backup path (Modify if restoring from another folder)
+$backupPath = "C:\AD_Backup"
+$latestBackup = Get-ChildItem -Path $backupPath -Directory | Sort-Object Name -Descending | Select-Object -First 1
+$restoreFolder = "$backupPath\$($latestBackup.Name)"
+
+Write-Host "Restoring AD and DC files from $restoreFolder..."
+
+# Restore NTDS Database
+Copy-Item -Path "$restoreFolder\ntds.dit" -Destination "C:\Windows\NTDS\ntds.dit" -Force
+
+# Restore SYSVOL
+Copy-Item -Path "$restoreFolder\SYSVOL" -Destination "C:\Windows\SYSVOL" -Recurse -Force
+
+# Restore Registry Hives (Reboot required after this)
+reg restore HKLM\SAM "$restoreFolder\SAM.hiv"
+reg restore HKLM\SECURITY "$restoreFolder\SECURITY.hiv"
+reg restore HKLM\SYSTEM "$restoreFolder\SYSTEM.hiv"
+
+Write-Host "Restore complete! Reboot required."
